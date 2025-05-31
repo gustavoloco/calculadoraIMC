@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8" />
+  <title>Calculadora de IMC com temas e PWA</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Manifest para PWA -->
+  <link rel="manifest" href="manifest.json" />
+
+  <style>
+    /* ---------- Temas usando CSS custom properties ---------- */
+    :root {
+      --bg-color: #f0f4f8;
+      --text-color: #333;
+      --card-color: #fff;
+      --btn-bg: #4caf50;
+      --btn-bg-hover: #45a049;
+      --toggle-bg: #444;
+    }
+    body.dark-mode {
+      --bg-color: #1e1e1e;
+      --text-color: #f5f5f5;
+      --card-color: #2c2c2c;
+      --toggle-bg: #888;
+    }
+    /* Tema Azul */
+    body.theme-blue {
+      --bg-color: #e0f0ff;
+      --text-color: #004080;
+      --card-color: #d0e7ff;
+      --btn-bg: #007bff;
+      --btn-bg-hover: #0056b3;
+      --toggle-bg: #004080;
+    }
+    /* Tema Vermelho */
+    body.theme-red {
+      --bg-color: #ffe0e0;
+      --text-color: #800000;
+      --card-color: #ffc0c0;
+      --btn-bg: #d9534f;
+      --btn-bg-hover: #a9322f;
+      --toggle-bg: #800000;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg-color);
+      color: var(--text-color);
+      font-family: Arial, sans-serif;
+      transition: background .3s, color .3s;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      flex-direction: column;
+      padding: 20px;
+    }
+
+    .wrapper {
+      display: flex;
+      gap: 40px;
+      width: 100%;
+      max-width: 960px;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding-top: 40px;
+    }
+    @media (min-width: 768px) {
+      .wrapper {
+        flex-direction: row;
+        align-items: flex-start;
+      }
+    }
+
+    .container {
+      background: var(--card-color);
+      padding: 25px;
+      border-radius: 12px;
+      box-shadow: 0 0 20px rgba(0,0,0,.1);
+      width: 100%;
+      max-width: 380px;
+    }
+
+    h2 { text-align: center; margin-top: 0; }
+
+    input, button, select {
+      width: 100%;
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 6px;
+      font-size: 16px;
+      border: 1px solid #ccc;
+      background: var(--card-color);
+      color: var(--text-color);
+      transition: background .3s, color .3s;
+    }
+    button {
+      background: var(--btn-bg);
+      border: none;
+      color: #fff;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    button:hover { background: var(--btn-bg-hover); }
+
+    .resultado {
+      margin-top: 20px;
+      text-align: center;
+      font-weight: bold;
+      padding: 15px;
+      border-radius: 8px;
+      background: rgba(0,0,0,.05);
+    }
+
+    canvas {
+      width: 100% !important;
+      max-width: 480px;
+    }
+
+    #toggleDark {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      width: 46px;
+      height: 46px;
+      border-radius: 50%;
+      background: var(--toggle-bg);
+      border: none;
+      color: #fff;
+      font-size: 20px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,.25);
+      transition: background .3s;
+      z-index: 1000;
+    }
+    #toggleDark:hover { background: var(--toggle-bg); opacity: .85; }
+
+    /* Selector tema */
+    #temaSelector {
+      max-width: 380px;
+      margin-bottom: 10px;
+    }
+
+  </style>
+</head>
+<body>
+
+<!-- Botão modo escuro -->
+<button id="toggleDark" title="Alternar modo escuro">🌙</button>
+
+<!-- Selector de tema -->
+<select id="temaSelector" aria-label="Selecionar tema">
+  <option value="">Tema padrão</option>
+  <option value="theme-blue">Tema Azul</option>
+  <option value="theme-red">Tema Vermelho</option>
+</select>
+
+<div class="wrapper">
+  <!-- CALCULADORA -->
+  <div class="container">
+    <h2>Calculadora de IMC</h2>
+    <input type="text"   id="nome"   placeholder="Seu nome" autocomplete="off" />
+    <input type="number" id="peso"   placeholder="Peso (kg)" step="0.1" autocomplete="off" />
+    <input type="number" id="altura" placeholder="Altura (cm)" step="0.1" autocomplete="off" />
+    <button onclick="calcularIMC()">Calcular</button>
+    <div class="resultado" id="resultado"></div>
+  </div>
+
+  <!-- GRÁFICO -->
+  <canvas id="graficoIMC" aria-label="Gráfico do IMC" role="img"></canvas>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  const resultado = document.getElementById("resultado");
+  const historico = [];
+  const nomes = [];
+
+  // CARREGAR histórico salvo no localStorage ao iniciar
+  function carregarHistorico() {
+    const data = localStorage.getItem('imcHistorico');
+    if (data) {
+      try {
+        const lista = JSON.parse(data);
+        lista.forEach(item => {
+          nomes.push(item.nome);
+          historico.push(item.imc);
+        });
+      } catch(e) {
+        console.warn("Erro ao carregar histórico:", e);
+      }
+    }
+  }
+
+  function salvarHistorico() {
+    const lista = nomes.map((nome, i) => ({
+      nome,
+      imc: historico[i]
+    }));
+    localStorage.setItem('imcHistorico', JSON.stringify(lista));
+  }
+
+  function calcularIMC() {
+    const nome     = document.getElementById("nome").value.trim();
+    const peso     = parseFloat(document.getElementById("peso").value);
+    const alturaCm = parseFloat(document.getElementById("altura").value);
+
+    if (!nome || isNaN(peso) || isNaN(alturaCm)) {
+      resultado.innerHTML = "Por favor, preencha todos os campos corretamente.";
+      return;
+    }
+
+    const alturaM = alturaCm / 100;
+    const imc     = peso / (alturaM * alturaM);
+    let classificacao = "";
+
+    if      (imc < 18.5) classificacao = "Abaixo do peso";
+    else if (imc < 25)   classificacao = "Peso normal";
+    else if (imc < 30)   classificacao = "Sobrepeso";
+    else if (imc < 35)   classificacao = "Obesidade grau I";
+    else if (imc < 40)   classificacao = "Obesidade grau II";
+    else                 classificacao = "Obesidade grau III";
+
+    resultado.innerHTML = `
+      Olá, <strong>${nome}</strong><br>
+      Seu IMC é: <strong>${imc.toFixed(2)}</strong><br>
+      Classificação: <strong>${classificacao}</strong>
+    `;
+
+    nomes.push(nome);
+    historico.push(imc.toFixed(2));
+    salvarHistorico();
+    atualizarGrafico();
+  }
+
+  const ctx = document.getElementById('graficoIMC').getContext('2d');
+  const grafico = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: nomes,
+      datasets: [{
+        label: 'IMC',
+        data: historico,
+        borderColor: 'rgb(75, 192, 192)',
+        backgroundColor: 'rgba(75, 192, 192, 0.2)',
+        fill: true,
+        tension: 0.3
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: true } },
+      scales: {
+        y: { suggestedMin: 15, suggestedMax: 40 }
+      }
+    }
+  });
+
+  function atualizarGrafico() {
+    grafico.update();
+  }
+
+  // Carrega histórico salvo ao iniciar
+  carregarHistorico();
+  atualizarGrafico();
+
+  // Modo escuro toggle
+  document.getElementById("toggleDark").addEventListener("click", () => {
+    document.body.classList.toggle("dark-mode");
+  });
+
+  // Selector de tema
+  const temaSelector = document.getElementById("temaSelector");
+  temaSelector.addEventListener("change", () => {
+    document.body.classList.remove("theme-blue", "theme-red");
+    if (temaSelector.value) {
+      document.body.classList.add(temaSelector.value);
+    }
+  });
+
+  // === PWA: Registrar service worker simples ===
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('service-worker.js').then(() => {
+        console.log('Service Worker registrado com sucesso');
+      }).catch(err => {
+        console.log('Falha ao registrar Service Worker:', err);
+      });
+    });
+  }
+</script>
+
+</body>
+</html>
